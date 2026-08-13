@@ -398,6 +398,8 @@ class AITextProcessor {
       let errorMessage = '连接失败';
       if (error.message.includes('401')) {
         errorMessage = 'API密钥无效';
+      } else if (error.message.includes('402')) {
+        errorMessage = '需要付款/帳戶無額度：該 API Key 的帳號需有訂閱或儲值，請改用 Personal 帳號的 Key 或在帳單頁面加入付款方式';
       } else if (error.message.includes('403')) {
         errorMessage = 'API密钥权限不足';
       } else if (error.message.includes('429')) {
