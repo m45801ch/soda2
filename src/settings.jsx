@@ -2584,6 +2584,8 @@ const SettingsPage = () => {
                               toast.error(t('settings.testFailed'), { description: r.error || t('settings.testFailedDesc') });
                             }
                           }).catch(() => {}).finally(() => setTesting(false));
+                          // 填入 API Key 後自動重整模型清單（無需切換廠商）
+                          fetchModelsForProvider(selectedProviderId);
                         }
                       }}
                       placeholder={
