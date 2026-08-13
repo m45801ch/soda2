@@ -431,6 +431,41 @@ class DatabaseManager {
     return stmt.run();
   }
 
+  _todayKey() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  // AI 優化當日成功次數（按廠商）。格式 { "YYYY-MM-DD": { providerId: count } }
+  incrementAiUsage(providerId) {
+    try {
+      const today = this._todayKey();
+      const raw = this.getSetting("ai_daily_usage", {});
+      const map = raw && typeof raw === "object" ? raw : {};
+      const todayUsage = (map[today] && typeof map[today] === "object") ? map[today] : {};
+      const provider = String(providerId || "unknown");
+      todayUsage[provider] = (Number(todayUsage[provider]) || 0) + 1;
+      map[today] = todayUsage;
+      this.setSetting("ai_daily_usage", map);
+      return true;
+    } catch (e) {
+      if (this.logger && this.logger.warn) this.logger.warn("記錄 AI 使用次數失敗:", e.message);
+      return false;
+    }
+  }
+
+  getAiUsage() {
+    try {
+      const today = this._todayKey();
+      const raw = this.getSetting("ai_daily_usage", {});
+      const map = raw && typeof raw === "object" ? raw : {};
+      const todayUsage = (map[today] && typeof map[today] === "object") ? map[today] : {};
+      return { today, usage: todayUsage };
+    } catch (e) {
+      return { today: this._todayKey(), usage: {} };
+    }
+  }
+
   backup(backupPath) {
     if (!this.db) return false;
     

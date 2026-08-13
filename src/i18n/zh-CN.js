@@ -98,6 +98,8 @@ export default {
     apiKeyDesc: '用于AI文本优化功能的API密钥',
     aiProvider: 'AI 模型商',
     getApiKey: '获取 API Key',
+    aiUsageToday: '今日 AI 优化成功次数',
+    aiUsageTimes: ' 次',
     backup: {
       title: '备份与还原',
       desc: '备份所有自定义数据（主 prompt、修饰模式、专业词库、热词、字典、设置）为单一 JSON 文件。',

@@ -2,6 +2,15 @@ const { ipcMain } = require("electron");
 const { BUILTIN_STYLE_PACK } = require("../aiPrompts");
 
 module.exports = function register(ctx) {
+  // 取得 AI 優化當日成功次數（按廠商）
+  ipcMain.handle("ai-get-usage", async () => {
+    try {
+      return ctx.databaseManager.getAiUsage();
+    } catch (e) {
+      return { today: new Date().toISOString().slice(0, 10), usage: {} };
+    }
+  });
+
   // AI文本处理（實作在 aiTextProcessor.js）
   ipcMain.handle("process-text", async (event, text, mode = 'optimize') => {
     try {

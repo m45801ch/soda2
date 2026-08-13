@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // AI文本处理
   processText: (text, mode) => ipcRenderer.invoke("process-text", text, mode),
+  getAiUsage: () => ipcRenderer.invoke("ai-get-usage"),
   checkAIStatus: (testConfig) => ipcRenderer.invoke("check-ai-status", testConfig),
   fetchProviderModels: (providerSettings) => ipcRenderer.invoke("fetch-provider-models", providerSettings),
 

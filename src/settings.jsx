@@ -142,6 +142,7 @@ const SettingsPage = () => {
   const [micDevices, setMicDevices] = useState([]); // 可選的麥克風清單
   const [runtimeInfo, setRuntimeInfo] = useState(null);
   const [appVersion, setAppVersion] = useState(''); // 真實版本號（issue #15：別再寫死 v1.0.1）
+  const [aiUsage, setAiUsage] = useState(null); // 當日 AI 優化成功次數 { today, usage: {provider: count} }
   const [micMonitorLevel, setMicMonitorLevel] = useState(0);
   const [micMonitorError, setMicMonitorError] = useState("");
   const [micMonitorActive, setMicMonitorActive] = useState(false);
@@ -300,6 +301,15 @@ const SettingsPage = () => {
     if (activeTab === 'models') {
       loadAsrConfig();
       loadModelStatuses();
+    }
+  }, [activeTab]);
+
+  // 切到 AI 分頁時載入當日使用次數
+  useEffect(() => {
+    if (activeTab === 'ai') {
+      window.electronAPI?.getAiUsage?.().then((res) => {
+        if (res) setAiUsage(res);
+      }).catch(() => {});
     }
   }, [activeTab]);
 
@@ -2455,10 +2465,30 @@ const SettingsPage = () => {
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 chinese-title">
                   {t('settings.aiConfig')}
                 </h2>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                 {t('settings.aiConfigDesc')}
-               </p>
+                 <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                  {t('settings.aiConfigDesc')}
+                </p>
               </div>
+
+              {/* 今日 AI 優化次數 */}
+              {aiUsage && Object.keys(aiUsage.usage || {}).length > 0 && (
+                <div className="mb-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    {t('settings.aiUsageToday')}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(aiUsage.usage).map(([providerId, count]) => {
+                      const provider = AI_PROVIDERS.find(p => p.id === providerId);
+                      return (
+                        <span key={providerId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-xs font-medium text-blue-700 dark:text-blue-300">
+                          {provider ? provider.label : providerId}
+                          <span className="tabular-nums">{count}{t('settings.aiUsageTimes')}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
              <div className="space-y-4">
                {/* AI优化开关 */}

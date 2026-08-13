@@ -98,6 +98,8 @@ export default {
     apiKeyDesc: 'API key used for AI text enhancement',
     aiProvider: 'AI Provider',
     getApiKey: 'Get API Key',
+    aiUsageToday: "Today's AI enhancement calls",
+    aiUsageTimes: ' calls',
     backup: {
       title: 'Backup & Restore',
       desc: 'Backup all custom data (main prompt, modes, professional vocab, hotwords, dictionary, settings) into a single JSON file.',

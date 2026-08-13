@@ -183,6 +183,13 @@ class AITextProcessor {
           model: model
         };
         
+        // 記錄當日成功使用次數（按廠商）
+        try {
+          this.databaseManager && this.databaseManager.incrementAiUsage(providerId);
+        } catch (e) {
+          this.logger.warn && this.logger.warn("記錄 AI 使用次數失敗:", e.message || e);
+        }
+        
         this.logger.info('AI文本处理结果:', {
           originalText: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
           optimizedText: result.text.substring(0, 100) + (result.text.length > 100 ? '...' : ''),
