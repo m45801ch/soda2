@@ -801,7 +801,7 @@ class LlamaManager {
 
       // 中文序數轉阿拉伯數字（依設定，預設關）
       const convertOrdinalsEnabled = this.databaseManager
-        ? this.databaseManager.getSetting("convert_ordinal_numbers", false)
+        ? this.databaseManager.getSetting("convert_ordinal_numbers", true)
         : false;
       if (convertOrdinalsEnabled) {
         text = this._convertOrdinals(text);

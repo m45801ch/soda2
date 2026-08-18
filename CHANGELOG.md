@@ -7,6 +7,23 @@
 
 - （暫無）
 
+## [1.2.3] - 2026-08-18
+
+### 新增
+
+- 中文序數轉數字預設改為開啟：講「版本號為 V 一點二點三」→「V 1.2.3」，支援版本號/連續小數點轉換（一點二點三 → 1.2.3），GGUF 與 sherpa 兩路徑皆生效
+- 熱詞統一為單一來源（設定-熱詞），與 AI 風格包熱詞即時雙向同步
+- 熱詞在 GGUF 模式（Qwen3-ASR 1.7B）也影響辨識（加入轉錄 prompt）
+- 熱詞新增/刪除不再依賴 sherpa server（GGUF 模式也能管理）
+- AI 設定頁新增「今日 AI 優化成功次數」（按廠商分開計數）
+- AI 設定填入 API Key 後自動重整模型清單
+- AI 連線測試新增 HTTP 402 明確錯誤提示（Cerebras 等需付款帳號）
+
+### 修正
+
+- 修復語音符號誤觸發：常見字（如「車」「火」）不再被自動替換成符號，需「名稱＋表情/符號」後綴才觸發
+- 修復熱詞「Sherpa 服務器未就緒」問題（GGUF 模式）
+
 ## [1.2.2] - 2026-08-13
 
 ### 修正
@@ -175,7 +192,8 @@ See [releases](https://github.com/Jeffrey0117/SpeakSlow/releases)。
 - 語音符號與表情插入
 - 錄音熱鍵：右 Alt / 右 Ctrl 一鍵切換錄音
 
-[unreleased]: https://github.com/m45801ch/soda2/compare/v1.2.2...HEAD
+[unreleased]: https://github.com/m45801ch/soda2/compare/v1.2.3...HEAD
+[1.2.3]: https://github.com/m45801ch/soda2/releases/tag/v1.2.3
 [1.2.2]: https://github.com/m45801ch/soda2/releases/tag/v1.2.2
 [1.2.1]: https://github.com/m45801ch/soda2/releases/tag/v1.2.1
 [1.2.0]: https://github.com/m45801ch/soda2/releases/tag/v1.2.0

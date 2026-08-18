@@ -1598,7 +1598,7 @@ class SherpaManager {
         options: {
           sample_rate: options.sampleRate || 16000,
           convert_ordinal_numbers: this.databaseManager
-            ? this.databaseManager.getSetting("convert_ordinal_numbers", false)
+            ? this.databaseManager.getSetting("convert_ordinal_numbers", true)
             : false,
         },
       });

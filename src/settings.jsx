@@ -102,7 +102,7 @@ const SettingsPage = () => {
     mic_auto_gain: true,              // 自動增益（AGC）
     typeless_trigger: "default",      // 錄音觸發鍵（issue #12：可自訂避開衝突）
     auto_format_lists: false,         // 自動列點（第一二三→1.2.3），預設關
-    convert_ordinal_numbers: false,       // 中文序數轉阿拉伯數字，預設關
+    convert_ordinal_numbers: true,       // 中文序數轉阿拉伯數字，預設開
     auto_line_break: false,           // 依停頓自動分行（issue #17），預設關
     save_audio: true,                 // 保存錄音檔（給重新辨識用），預設開
     audio_retention_days: 30,         // 錄音保留天數（0=永久）
@@ -605,7 +605,7 @@ const SettingsPage = () => {
           mic_auto_gain: allSettings.mic_auto_gain !== false,
           typeless_trigger: allSettings.typeless_trigger || "default",
           auto_format_lists: allSettings.auto_format_lists === true,
-          convert_ordinal_numbers: allSettings.convert_ordinal_numbers === true,
+          convert_ordinal_numbers: allSettings.convert_ordinal_numbers !== false,
           auto_line_break: allSettings.auto_line_break === true,
           save_audio: allSettings.save_audio !== false,
           audio_retention_days: allSettings.audio_retention_days != null ? Number(allSettings.audio_retention_days) : 30,
