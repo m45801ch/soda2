@@ -65,6 +65,19 @@ const AIStylePackManager = ({ t }) => {
     if (window.electronAPI) {
       await window.electronAPI.setSetting("ai_style_settings", newSettings);
       await window.electronAPI.setSetting("custom_words", updatedWords);
+      // 雙向同步：風格包熱詞變更 → 同步到設定-熱詞（hotwords.txt，影響 ASR/GGUF 辨識）
+      try {
+        const res = await window.electronAPI.getHotwords();
+        const current = (res && res.words) || [];
+        const updated = Array.isArray(updatedWords) ? updatedWords.map(w => String(w).trim()).filter(Boolean) : [];
+        if (JSON.stringify(current) !== JSON.stringify(updated)) {
+          await window.electronAPI.setHotwords({
+            enabled: true,
+            score: (res && res.score) || 1.5,
+            words: updated,
+          });
+        }
+      } catch (e) { /* 同步失敗不影響設定 */ }
     }
   };
 

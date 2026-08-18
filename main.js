@@ -283,6 +283,18 @@ async function startApp() {
     logger.warn("Sherpa 在启动时不可用，这不是关键问题", err);
   });
 
+  // 啟動時同步熱詞：hotwords.txt（設定-熱詞）為唯一來源 → 同步到 custom_words（風格包）
+  try {
+    sherpaManager.getHotwords().then((res) => {
+      if (res && res.success && Array.isArray(res.words)) {
+        databaseManager.setSetting("custom_words", res.words);
+        logger.info('啟動熱詞同步完成:', `${res.words.length} 個`);
+      }
+    }).catch(() => {});
+  } catch (e) {
+    logger.warn("啟動熱詞同步失敗:", e.message || e);
+  }
+
   if (databaseManager.getSetting("asr_model_type", "paraformer") === "qwen3_asr_gguf") {
     llamaManager.checkModelFiles().then((status) => {
       if (status && status.models_downloaded) {

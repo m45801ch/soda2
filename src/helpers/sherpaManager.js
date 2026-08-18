@@ -1761,22 +1761,21 @@ class SherpaManager {
    * @returns {Promise<{success: boolean, enabled: boolean, score: number, words: string[]}>}
    */
   async getHotwords() {
-    if (!this.serverReady) {
-      if (this.initializationPromise) {
-        await this.initializationPromise;
-      }
-      if (!this.serverReady) {
-        return { success: false, error: "Sherpa 服務器未就緒" };
-      }
-    }
-
+    // 直接讀取 hotwords.txt（不依賴 sherpa server，GGUF 模式也能用）
+    // 格式與 sherpa_server.py 一致：每行一個詞，# 開頭為註解
     try {
-      const result = await this._sendServerCommand({ action: "get_hotwords" });
-      this.logger.info && this.logger.info("取得熱詞設定:", result);
-      return result;
+      const fs = require("fs");
+      const path = require("path");
+      const hotwordsPath = path.join(this.getUserDataPath(), "hotwords.txt");
+      let words = [];
+      if (fs.existsSync(hotwordsPath)) {
+        const content = fs.readFileSync(hotwordsPath, "utf8");
+        words = content.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+      }
+      return { success: true, enabled: true, score: 1.5, words };
     } catch (error) {
       this.logger.error && this.logger.error("取得熱詞設定失敗:", error);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, words: [] };
     }
   }
 
@@ -1789,24 +1788,35 @@ class SherpaManager {
    * @returns {Promise<{success: boolean}>}
    */
   async setHotwords(config) {
-    if (!this.serverReady) {
-      if (this.initializationPromise) {
-        await this.initializationPromise;
-      }
-      if (!this.serverReady) {
-        return { success: false, error: "Sherpa 服務器未就緒" };
-      }
-    }
-
+    // 直接寫入 hotwords.txt（不依賴 sherpa server，GGUF 模式也能用）
+    // sherpa server 載入模型時會自動讀取此檔；重啟辨識後生效。
     try {
-      const result = await this._sendServerCommand({
-        action: "set_hotwords",
-        enabled: config.enabled,
-        score: config.score,
-        words: config.words,
-      });
-      this.logger.info && this.logger.info("設定熱詞結果:", result);
-      return result;
+      const fs = require("fs");
+      const path = require("path");
+      const hotwordsPath = path.join(this.getUserDataPath(), "hotwords.txt");
+      const words = Array.isArray(config.words) ? config.words.map(w => String(w).trim()).filter(Boolean) : [];
+      const content = "# 熱詞列表 - 每行一個詞彙\n" + words.join("\n") + (words.length ? "\n" : "");
+      fs.mkdirSync(path.dirname(hotwordsPath), { recursive: true });
+      fs.writeFileSync(hotwordsPath, content, "utf8");
+      this.logger.info && this.logger.info(`儲存 ${words.length} 個熱詞到 ${hotwordsPath}`);
+      // 若 sherpa server 在線，同步套用即時生效
+      if (this.serverReady) {
+        try {
+          await this._sendServerCommand({
+            action: "set_hotwords",
+            enabled: config.enabled !== false,
+            score: config.score || 1.5,
+            words,
+          });
+        } catch (e) { /* 同步失敗不影響本地儲存 */ }
+      }
+      // 雙向同步：設定-熱詞變更 → 同步到 AI 風格包的 custom_words
+      try {
+        if (this.databaseManager) {
+          this.databaseManager.setSetting("custom_words", words);
+        }
+      } catch (e) { /* 同步失敗不影響熱詞儲存 */ }
+      return { success: true, words };
     } catch (error) {
       this.logger.error && this.logger.error("設定熱詞失敗:", error);
       return { success: false, error: error.message };

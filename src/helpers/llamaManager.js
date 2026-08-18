@@ -720,12 +720,30 @@ class LlamaManager {
       const port = this.getServerPort();
       const http = require("http");
       const b64 = Buffer.from(audioBlob).toString("base64");
+
+      // 熱詞：從 hotwords.txt 讀取（與 sherpa 共用同一來源），加入轉錄 prompt 影響辨識
+      let hotwordsHint = "";
+      try {
+        const fs = require("fs");
+        const path = require("path");
+        const hotwordsPath = path.join(this.getUserDataPath(), "hotwords.txt");
+        if (fs.existsSync(hotwordsPath)) {
+          const words = fs.readFileSync(hotwordsPath, "utf8")
+            .split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+          if (words.length) {
+            hotwordsHint = " Pay attention to these terms: " + words.join(", ") + ".";
+          }
+        }
+      } catch (e) {
+        this.logger.warn && this.logger.warn("讀取熱詞失敗:", e.message || e);
+      }
+
       // PoC 確認：input_audio.data 必須是純 base64（無 data: 前綴），format 用 wav
       const payload = JSON.stringify({
         messages: [
           { role: "system", content: "You are an advanced multilingual Speech-to-Text model. Accurately transcribe the audio into text in its original spoken language. Preserve English words and proper nouns (brands, names, technical terms) exactly as spoken — do NOT transliterate them into Chinese. Ignore background noise, filler words, and stutters where possible, and format the final output with correct grammar and capitalization." },
           { role: "user", content: [
-            { type: "text", text: "Transcribe the audio." },
+            { type: "text", text: "Transcribe the audio." + hotwordsHint },
             { type: "input_audio", input_audio: { data: b64, format: "wav" } },
           ] },
         ],
