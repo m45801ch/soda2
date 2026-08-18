@@ -478,6 +478,13 @@ def convert_ordinals(text):
     if not _ORDINAL_ENABLED or not text:
         return text
     import re
+    # ---- 類別 0：版本號 / 連續小數點（一點X點Y點Z → 1.X.Y.Z）。優先於類別 1，
+    #      避免「一點二點三」被誤判成兩個「一點X」而輸出 1.2 1.3。----
+    text = re.sub(
+        r'一點([零一二三四五六七八九])((?:點[零一二三四五六七八九])+)',
+        lambda m: '.'.join(_CN_NUM.get(c, c) for c in re.findall(r'[零一二三四五六七八九]', m.group(0))),
+        text
+    )
     # ---- 類別 1：一點X 連續編號 ----
     pat = re.compile(r'一點([零一二三四五六七八九])')
     matches = list(pat.finditer(text))

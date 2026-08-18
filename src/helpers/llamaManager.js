@@ -664,6 +664,17 @@ class LlamaManager {
   _convertOrdinals(text) {
     if (!text) return text;
     const cnNum = { "零": "0", "一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6", "七": "7", "八": "8", "九": "9" };
+    // 類別 0：版本號 / 連續小數點（一點X點Y點Z → 1.X.Y.Z）。優先於類別 1，避免「一點二點三」誤判成 1.2 1.3。
+    text = text.replace(
+      /一點([零一二三四五六七八九])((?:點[零一二三四五六七八九])+)/g,
+      (match, first, tail) => {
+        const digits = [first];
+        const tailRe = /點([零一二三四五六七八九])/g;
+        let m;
+        while ((m = tailRe.exec(tail)) !== null) digits.push(m[1]);
+        return "1." + digits.map((d) => cnNum[d] || d).join(".");
+      }
+    );
     // 類別 1：一點X 連續編號
     const dianMatches = [...text.matchAll(/一點([零一二三四五六七八九])/g)];
     if (dianMatches.length >= 2) {
