@@ -371,14 +371,16 @@ async function startApp() {
 
   // 同步開機啟動設定到系統中
   try {
-    const autoStart = databaseManager.getSetting('auto_start', false);
+    // dev 模式（npm run dev）永不寫入開機自啟動，避免開機跑出 dev 的 electron 視窗。
+    const isDev = process.env.NODE_ENV === "development";
+    const autoStart = isDev ? false : databaseManager.getSetting('auto_start', false);
     const autoStartMinimized = databaseManager.getSetting('auto_start_minimized', true);
     app.setLoginItemSettings({
       openAtLogin: !!autoStart,
       path: process.execPath,
       args: autoStartMinimized ? ["--hidden"] : []
     });
-    logger.info("開機自啟動設定同步完成:", { autoStart, autoStartMinimized });
+    logger.info("開機自啟動設定同步完成:", { autoStart, autoStartMinimized, isDev });
   } catch (e) {
     logger.warn("開機自啟動設定同步失敗:", e.message);
   }
