@@ -489,6 +489,8 @@ export const useRecording = (modelStatus) => {
           audio_path: null,
           save_audio: saveAudio !== false,
         });
+        // 走跟一般流程相同的完成回呼，App 才會 safePaste 到游標處
+        window.onAIOptimizationComplete?.({ ...transcriptionResult, text: finalText, enhanced_by_ai: false });
         return transcriptionResult;
       }
 

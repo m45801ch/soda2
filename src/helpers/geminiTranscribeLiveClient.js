@@ -129,6 +129,7 @@ class GeminiTranscribeLiveClient {
     if (this._endStreamSent) return Promise.resolve(this.getFinalText());
     if (!this.connected || !this.setupComplete) return Promise.resolve(this.getFinalText());
     this._endStreamPromise = new Promise((resolve) => {
+      this.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
       this._endStreamSent = true;
       this._resolveEndStream = () => resolve(this.getFinalText());
       this._endStreamTimeout = setTimeout(() => this._resolvePendingEndStream(), END_STREAM_TIMEOUT_MS);
