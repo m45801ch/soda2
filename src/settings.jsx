@@ -83,6 +83,37 @@ const AI_PROVIDERS = [
   { id: 'custom',     label: 'Custom',     base_url: 'http://localhost:11434/v1' },
 ];
 
+export const DEFAULT_CLOUD_ASR_SETTINGS = {
+  enabled: false,
+  provider: 'openai',
+  api_key: '',
+  base_url: '',
+  model: '',
+  gemini_mode: 'rest',
+  transcription_mode: 'smart',
+  language_code: '',
+};
+
+export const updateGeminiMode = (settings = {}, mode) => {
+  const gemini_mode = mode === 'live' ? 'live' : 'rest';
+  return {
+    ...settings,
+    gemini_mode,
+    model: gemini_mode === 'live'
+      ? 'gemini-3.5-transcribe-live'
+      : 'gemini-3.5-transcribe',
+  };
+};
+
+export const normalizeCloudAsrSettings = (settings = {}) => {
+  const normalized = { ...DEFAULT_CLOUD_ASR_SETTINGS, ...settings };
+  return normalized.provider === 'gemini_transcribe'
+    ? updateGeminiMode(normalized, normalized.gemini_mode)
+    : normalized;
+};
+
+export const cloudAsrTestError = () => '連線測試失敗，請檢查網路與 API 金鑰。';
+
 const SettingsPage = () => {
   const { t, language, setLanguage, languages } = useTranslation();
   const [activeTab, setActiveTab] = useState('general');
@@ -158,13 +189,7 @@ const SettingsPage = () => {
   const [modelDownloading, setModelDownloading] = useState(null); // 正在下載的 modelId
   const [modelDownloadProgress, setModelDownloadProgress] = useState(0);
   const [modelDeleting, setModelDeleting] = useState(null); // 正在刪除的 modelId
-  const [cloudAsrSettings, setCloudAsrSettings] = useState({
-    enabled: false,
-    provider: 'openai',
-    api_key: '',
-    base_url: '',
-    model: '',
-  });
+  const [cloudAsrSettings, setCloudAsrSettings] = useState(DEFAULT_CLOUD_ASR_SETTINGS);
   const [cloudAsrTesting, setCloudAsrTesting] = useState(false);
   const [cloudAsrTestResult, setCloudAsrTestResult] = useState(null);
 
@@ -275,18 +300,12 @@ const SettingsPage = () => {
         setSelectedModelType(activeType);
 
         // 雲端 ASR 設定
-        let cloudCfg = {
-          enabled: false,
-          provider: 'openai',
-          api_key: '',
-          base_url: '',
-          model: '',
-        };
+        let cloudCfg = DEFAULT_CLOUD_ASR_SETTINGS;
         try {
           const raw = allSettings.cloud_asr_settings;
           if (raw) {
             const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-            cloudCfg = { ...cloudCfg, ...parsed };
+            cloudCfg = normalizeCloudAsrSettings(parsed);
           }
         } catch (e) { /* ignore */ }
         setCloudAsrSettings(cloudCfg);
@@ -451,7 +470,12 @@ const SettingsPage = () => {
 
   // 更新雲端 ASR 設定並存檔
   const updateCloudAsrSetting = async (key, value) => {
-    const updated = { ...cloudAsrSettings, [key]: value };
+    const nextSettings = { ...cloudAsrSettings, [key]: value };
+    const updated = key === 'gemini_mode'
+      ? updateGeminiMode(cloudAsrSettings, value)
+      : key === 'provider' && value === 'gemini_transcribe'
+        ? normalizeCloudAsrSettings(nextSettings)
+        : nextSettings;
     setCloudAsrSettings(updated);
     try {
       await window.electronAPI?.setSetting?.('cloud_asr_settings', JSON.stringify(updated));
@@ -471,8 +495,9 @@ const SettingsPage = () => {
         toast.error('連線失敗: ' + (result?.error || '未知錯誤'));
       }
     } catch (e) {
-      setCloudAsrTestResult({ success: false, error: e.message });
-      toast.error('連線測試失敗: ' + e.message);
+      const error = cloudAsrTestError(e);
+      setCloudAsrTestResult({ success: false, error });
+      toast.error(error);
     } finally {
       setCloudAsrTesting(false);
     }
@@ -2367,6 +2392,7 @@ const SettingsPage = () => {
                           <option value="groq">Groq (Whisper Ultra-fast)</option>
                           <option value="deepgram">Deepgram Nova</option>
                           <option value="assemblyai">AssemblyAI</option>
+                          <option value="gemini_transcribe">Google (Gemini Transcribe)</option>
                           <option value="custom">Custom（相容 OpenAI 格式）</option>
                         </select>
                       </div>
@@ -2404,10 +2430,66 @@ const SettingsPage = () => {
                           type="text"
                           value={cloudAsrSettings.model}
                           onChange={(e) => updateCloudAsrSetting('model', e.target.value)}
-                          placeholder={cloudAsrSettings.provider === 'openai' ? 'whisper-1' : cloudAsrSettings.provider === 'groq' ? 'whisper-large-v3-turbo' : ''}
+                          readOnly={cloudAsrSettings.provider === 'gemini_transcribe' && cloudAsrSettings.gemini_mode === 'live'}
+                          placeholder={cloudAsrSettings.provider === 'openai' ? 'whisper-1' : cloudAsrSettings.provider === 'groq' ? 'whisper-large-v3-turbo' : cloudAsrSettings.provider === 'gemini_transcribe' ? 'gemini-3.5-transcribe' : ''}
                           className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
                         />
                       </div>
+
+                      {/* ── Gemini Transcribe 專屬設定 ── */}
+                      {cloudAsrSettings.provider === 'gemini_transcribe' && (
+                        <div className="space-y-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                          {/* Gemini 模式：REST / Live */}
+                          <div>
+                            <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">Gemini 模式</label>
+                            <select
+                              value={cloudAsrSettings.gemini_mode || 'rest'}
+                              onChange={(e) => updateCloudAsrSetting('gemini_mode', e.target.value)}
+                              className="w-full text-sm rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
+                            >
+                              <option value="rest">REST（錄完再送）— gemini-3.5-transcribe</option>
+                              <option value="live">Live（即時串流）— gemini-3.5-transcribe-live</option>
+                            </select>
+                            <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                              {cloudAsrSettings.gemini_mode === 'live'
+                                ? '⚡ Live 模式：邊錄邊辨識，即時顯示文字，延遲極低。'
+                                : '📝 REST 模式：錄完音訊後一次性送出辨識，穩定可靠。'}
+                            </p>
+                          </div>
+
+                          {/* 轉錄模式：Smart / Verbatim */}
+                          <div>
+                            <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">轉錄模式</label>
+                            <select
+                              value={cloudAsrSettings.transcription_mode || 'smart'}
+                              onChange={(e) => updateCloudAsrSetting('transcription_mode', e.target.value)}
+                              className="w-full text-sm rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
+                            >
+                              <option value="smart">Smart（智慧模式）— 自動刪贅字、修正口誤、格式化</option>
+                              <option value="verbatim">Verbatim（逐字稿）— 保留所有口語細節</option>
+                            </select>
+                          </div>
+
+                          {/* 語言提示 */}
+                          <div>
+                            <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">語言（選填）</label>
+                            <select
+                              value={cloudAsrSettings.language_code || ''}
+                              onChange={(e) => updateCloudAsrSetting('language_code', e.target.value)}
+                              className="w-full text-sm rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
+                            >
+                              <option value="">自動偵測</option>
+                              <option value="zh-TW">繁體中文 (zh-TW)</option>
+                              <option value="zh-CN">簡體中文 (zh-CN)</option>
+                              <option value="en-US">英文 (en-US)</option>
+                              <option value="ja-JP">日文 (ja-JP)</option>
+                              <option value="ko-KR">韓文 (ko-KR)</option>
+                              <option value="th-TH">泰文 (th-TH)</option>
+                              <option value="vi-VN">越南文 (vi-VN)</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
 
                       {/* 操作按鈕列 */}
                       <div className="flex gap-2 pt-1">

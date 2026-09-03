@@ -1,7 +1,47 @@
 import { strict as assert } from "node:assert";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 const { CLOUD_PROVIDERS, detectCloudFolders, GOOGLE_DRIVE_MOUNT_MARKERS } = await import("../src/helpers/cloudProviders.js");
+
+function loadGeminiSettingsHelpers() {
+  const source = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "settings.jsx"), "utf8");
+  const match = source.match(/export const DEFAULT_CLOUD_ASR_SETTINGS[\s\S]*?(?=const SettingsPage)/);
+  assert.ok(match, "Gemini settings helpers must be exported from settings.jsx");
+  return Function(`${match[0].replaceAll("export ", "")}; return { updateGeminiMode, normalizeCloudAsrSettings, cloudAsrTestError };`)();
+}
+
+test("Live settings use the supported ASR model instead of a translation model", () => {
+  const { updateGeminiMode } = loadGeminiSettingsHelpers();
+  assert.equal(updateGeminiMode({}, "live").model, "gemini-3.5-transcribe-live");
+});
+
+test("Gemini REST settings use the supported REST ASR model", () => {
+  const { updateGeminiMode } = loadGeminiSettingsHelpers();
+  assert.equal(updateGeminiMode({}, "rest").model, "gemini-3.5-transcribe");
+});
+
+test("old Gemini settings receive REST-compatible defaults", () => {
+  const { normalizeCloudAsrSettings } = loadGeminiSettingsHelpers();
+  assert.deepEqual(normalizeCloudAsrSettings({ provider: "gemini_transcribe" }), {
+    enabled: false,
+    provider: "gemini_transcribe",
+    api_key: "",
+    base_url: "",
+    model: "gemini-3.5-transcribe",
+    gemini_mode: "rest",
+    transcription_mode: "smart",
+    language_code: "",
+  });
+});
+
+test("connection-test errors do not expose API credentials", () => {
+  const { cloudAsrTestError } = loadGeminiSettingsHelpers();
+  const error = cloudAsrTestError(new Error("request failed for key secret-key"));
+  assert.equal(error, "連線測試失敗，請檢查網路與 API 金鑰。");
+  assert.ok(!error.includes("secret-key"));
+});
 
 test("CLOUD_PROVIDERS has 6 providers each with required fields", () => {
   assert.equal(CLOUD_PROVIDERS.length, 6);
