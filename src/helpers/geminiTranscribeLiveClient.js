@@ -28,6 +28,7 @@ class GeminiTranscribeLiveClient {
 
   connect() {
     if (this._connectPromise) return this._connectPromise;
+    this._connectStart = Date.now();
 
     this._connectPromise = new Promise((resolve, reject) => {
       let settled = false;
@@ -66,6 +67,7 @@ class GeminiTranscribeLiveClient {
           }
           if (message.setupComplete) {
             this.setupComplete = true;
+            this.logger?.info?.(`[GeminiLive] setupComplete in ${Date.now() - this._connectStart}ms`);
             finish(resolve);
           } else if (message.error) {
             const error = new Error(message.error.message || "Gemini Live setup failed");
@@ -129,10 +131,17 @@ class GeminiTranscribeLiveClient {
     if (this._endStreamSent) return Promise.resolve(this.getFinalText());
     if (!this.connected || !this.setupComplete) return Promise.resolve(this.getFinalText());
     this._endStreamPromise = new Promise((resolve) => {
+      this._endStreamStart = Date.now();
       this.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
       this._endStreamSent = true;
-      this._resolveEndStream = () => resolve(this.getFinalText());
-      this._endStreamTimeout = setTimeout(() => this._resolvePendingEndStream(), END_STREAM_TIMEOUT_MS);
+      this._resolveEndStream = () => {
+        this.logger?.info?.(`[GeminiLive] endStream resolved in ${Date.now() - this._endStreamStart}ms`);
+        resolve(this.getFinalText());
+      };
+      this._endStreamTimeout = setTimeout(() => {
+        this.logger?.info?.("[GeminiLive] endStream hit 15s timeout, resolving with buffered text");
+        this._resolvePendingEndStream();
+      }, END_STREAM_TIMEOUT_MS);
       this.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
     });
     return this._endStreamPromise;
@@ -140,6 +149,7 @@ class GeminiTranscribeLiveClient {
 
   _handleServerContent(content) {
     if (!content) return;
+    this.logger?.info?.(`[GeminiLive] serverContent keys: ${Object.keys(content).join(",")}`);
     const interim = content.interimInputTranscription?.text;
     if (interim) this.onInterimText?.(interim);
     const final = content.inputTranscription?.text;
