@@ -866,7 +866,7 @@ const SettingsPage = () => {
   const fetchModelsForProvider = async (providerId) => {
     const provider = AI_PROVIDERS.find(p => p.id === providerId) || AI_PROVIDERS[0];
     const baseUrl = (aiProviderUrls[providerId] || provider.base_url).trim().replace(/\/$/, '');
-    const apiKey = aiProviderKeys[providerId] || '';
+    const apiKey = (aiProviderKeys[providerId] || '').trim();
     if (!apiKey && providerId !== 'custom') {
       toast.error('請先輸入 API Key');
       return;
@@ -892,6 +892,8 @@ const SettingsPage = () => {
   // 切換模型商時自動拉取模型清單
   useEffect(() => {
     if (selectedProviderId && !loading) {
+      // 切換廠商時先清空舊列表，避免顯示上一個廠商的模型
+      setAiModelsList([]);
       fetchModelsForProvider(selectedProviderId);
     }
   }, [selectedProviderId, loading]);
