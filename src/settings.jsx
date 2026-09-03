@@ -470,7 +470,11 @@ const SettingsPage = () => {
 
   // 更新雲端 ASR 設定並存檔
   const updateCloudAsrSetting = async (key, value) => {
-    const nextSettings = { ...cloudAsrSettings, [key]: value };
+    let nextSettings = { ...cloudAsrSettings, [key]: value };
+    if (key === 'provider' && value !== cloudAsrSettings.provider) {
+      // 切換服務商時清空模型，避免把上一個服務商的模型名稱送給新服務商
+      nextSettings = { ...nextSettings, model: '' };
+    }
     const updated = key === 'gemini_mode'
       ? updateGeminiMode(cloudAsrSettings, value)
       : key === 'provider' && value === 'gemini_transcribe'
