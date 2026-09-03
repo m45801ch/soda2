@@ -1,6 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { convertText, useTranslation } from '../i18n';
 
+export const isGeminiLiveCloudAsr = (settings) => Boolean(
+  settings?.enabled
+  && settings.provider === 'gemini_transcribe'
+  && settings.gemini_mode === 'live'
+);
+
+export const appendCloudLiveFinal = (finalText = '', segment = '') => `${finalText}${segment || ''}`;
+
 /**
  * 录音功能Hook
  * 提供录音、停止录音、音频处理等功能
@@ -14,6 +22,8 @@ export const useRecording = (modelStatus) => {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [error, setError] = useState(null);
   const [audioData, setAudioData] = useState(null);
+  const [partialText, setPartialText] = useState('');
+  const [fullText, setFullText] = useState('');
 
   const streamRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -26,6 +36,8 @@ export const useRecording = (modelStatus) => {
   // 添加防重复处理机制
   const processingRef = useRef({ isProcessingAudio: false, lastProcessTime: 0 });
   const isRecordingRef = useRef(false); // 最新錄音狀態（避免 stopRecording 閉包過期）
+  const cloudLiveRef = useRef({ active: false, unsubscribers: [] });
+  const cloudLiveFinalRef = useRef('');
 
   // 取消旗標：stopRecording 在 startRecording 非同步初始化途中被叫時，
   // 設此旗標讓 startRecording 在 await 回來後自己收手，避免殘留資源。
@@ -42,6 +54,22 @@ export const useRecording = (modelStatus) => {
       precogRef.current.timer = null;
     }
   }, []);
+
+  const clearCloudLiveListeners = useCallback(() => {
+    for (const unsubscribe of cloudLiveRef.current.unsubscribers) {
+      try { unsubscribe?.(); } catch (e) { /* ignore */ }
+    }
+    cloudLiveRef.current.unsubscribers = [];
+  }, []);
+
+  const abortCloudLive = useCallback(() => {
+    const wasActive = cloudLiveRef.current.active;
+    cloudLiveRef.current.active = false;
+    clearCloudLiveListeners();
+    if (wasActive) {
+      window.electronAPI?.cloudLiveAbort?.().catch(() => {});
+    }
+  }, [clearCloudLiveListeners]);
 
   // Float32 (sourceRate) → Int16 16kHz → base64
   const chunksToPcm16Base64 = (chunks, sourceRate) => {
@@ -91,7 +119,7 @@ export const useRecording = (modelStatus) => {
   }, []);
 
   // 清理資源
-  const cleanup = useCallback(() => {
+  const cleanup = useCallback((abortLive = true) => {
     stopPrecogTimer(); // 停止邊錄邊算的餵入（不 abort：成功路徑還要取用結果）
     // 錄音正常結束/取消 → 收掉崩潰救援暫存檔（這段已正常處理，不是孤兒）
     try { window.electronAPI?.recoveryEnd?.(); } catch (e) { /* ignore */ }
@@ -111,8 +139,9 @@ export const useRecording = (modelStatus) => {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    if (abortLive) abortCloudLive();
     pcmBufferRef.current = [];
-  }, [stopPrecogTimer]);
+  }, [abortCloudLive, stopPrecogTimer]);
 
   // 开始录音（使用 ScriptProcessor 直接錄製 PCM，避免 webm 解碼問題）
   const startRecording = useCallback(async () => {
@@ -120,8 +149,17 @@ export const useRecording = (modelStatus) => {
       setError(null);
       startCancelledRef.current = false; // 清除可能的舊取消旗標
 
+      let cloudAsrSettings = null;
+      try {
+        const storedSettings = await window.electronAPI?.getSetting?.('cloud_asr_settings', null);
+        cloudAsrSettings = typeof storedSettings === 'string' ? JSON.parse(storedSettings) : storedSettings;
+      } catch (e) {
+        cloudAsrSettings = null;
+      }
+      const cloudLiveEnabled = isGeminiLiveCloudAsr(cloudAsrSettings);
+
       // 检查 Sherpa 是否就绪
-      if (!modelStatus.isReady) {
+      if (!cloudLiveEnabled && !modelStatus.isReady) {
         if (modelStatus.isLoading) {
           throw new Error(t('errors.asrStarting'));
         } else if (modelStatus.error) {
@@ -190,6 +228,37 @@ export const useRecording = (modelStatus) => {
 
       streamRef.current = stream;
       pcmBufferRef.current = [];
+
+      if (cloudLiveEnabled) {
+        const api = window.electronAPI;
+        if (!api?.cloudLiveStart || !api?.cloudLiveFeed || !api?.cloudLiveEnd || !api?.cloudLiveAbort) {
+          throw new Error('Gemini Live IPC is unavailable');
+        }
+
+        cloudLiveFinalRef.current = '';
+        setPartialText('');
+        setFullText('');
+        cloudLiveRef.current.active = true;
+        cloudLiveRef.current.unsubscribers = [
+          api.onCloudLiveInterim?.((text) => setPartialText(text || '')),
+          api.onCloudLiveFinal?.((segment) => {
+            cloudLiveFinalRef.current = appendCloudLiveFinal(cloudLiveFinalRef.current, segment);
+            setFullText(cloudLiveFinalRef.current);
+            setPartialText('');
+          }),
+          api.onCloudLiveError?.((message) => setError(message || 'Gemini Live transcription failed')),
+        ].filter(Boolean);
+
+        const started = await api.cloudLiveStart();
+        if (!started?.success) {
+          throw new Error(started?.error || 'Gemini Live did not start');
+        }
+        if (startCancelledRef.current) {
+          cleanup();
+          startCancelledRef.current = false;
+          return;
+        }
+      }
 
       // 診斷：記錄 getUserMedia 結果，確認打包版是否拿到有效音軌
       try {
@@ -263,6 +332,14 @@ export const useRecording = (modelStatus) => {
         const inputData = e.inputBuffer.getChannelData(0);
         // 複製數據到緩衝區
         pcmBufferRef.current.push(new Float32Array(inputData));
+
+        if (cloudLiveRef.current.active) {
+          try {
+            const pcmBase64 = chunksToPcm16Base64([new Float32Array(inputData)], audioContext.sampleRate);
+            window.electronAPI?.cloudLiveFeed?.(pcmBase64).catch(() => {});
+          } catch (e) { /* ignore audio chunks that cannot be serialized */ }
+        }
+
         for (let i = 0; i < inputData.length; i++) {
           const a = Math.abs(inputData[i]);
           if (a > maxPeak) maxPeak = a;
@@ -279,6 +356,8 @@ export const useRecording = (modelStatus) => {
 
       source.connect(processor);
       processor.connect(audioContext.destination);
+
+      if (cloudLiveEnabled) return;
 
       // 邊錄邊算：每秒檢查，超過門檻就啟動 precog 並持續餵新音訊
       // 效能模式（asr_profile: standard | fast）跟正式辨識用同一顆模型
@@ -365,6 +444,54 @@ export const useRecording = (modelStatus) => {
         throw new Error(t('errors.recordingTooShort'));
       }
 
+      if (cloudLiveRef.current.active) {
+        cleanup(false);
+        const cloudResult = await window.electronAPI.cloudLiveEnd();
+        cloudLiveRef.current.active = false;
+        clearCloudLiveListeners();
+        if (!cloudResult?.success) {
+          throw new Error(cloudResult?.error || 'Gemini Live did not finish');
+        }
+
+        const cloudFinalText = (cloudResult.text || cloudLiveFinalRef.current || '').trim();
+        if (!cloudFinalText) return null;
+
+        const targetLang = await window.electronAPI.getSetting('language', 'zh-TW');
+        const shouldConvert = await window.electronAPI.getSetting('convert_transcription', true);
+        let finalText = cloudFinalText;
+        if (shouldConvert && targetLang === 'zh-TW') {
+          finalText = convertText(finalText, 'zh-TW');
+        }
+        try {
+          const dictionaryText = await window.electronAPI.applyDictionary(finalText);
+          if (dictionaryText && dictionaryText !== finalText) finalText = dictionaryText;
+        } catch (e) { /* dictionary failures do not block transcription */ }
+
+        const transcriptionResult = {
+          success: true,
+          text: finalText,
+          raw_text: cloudFinalText,
+          confidence: 0.99,
+          language: targetLang,
+          duration: totalLength / sourceSampleRate,
+          audio_path: null,
+          enhanced_by_ai: false,
+        };
+        window.onTranscriptionComplete?.(transcriptionResult);
+        const saveAudio = await window.electronAPI.getSetting('save_audio', true);
+        await window.electronAPI.saveTranscription?.({
+          raw_text: cloudFinalText,
+          text: finalText,
+          confidence: 0.99,
+          language: targetLang,
+          duration: totalLength / sourceSampleRate,
+          file_size: 0,
+          audio_path: null,
+          save_audio: saveAudio !== false,
+        });
+        return transcriptionResult;
+      }
+
       const mergedBuffer = new Float32Array(totalLength);
       let offset = 0;
       for (const chunk of pcmBufferRef.current) {
@@ -415,7 +542,7 @@ export const useRecording = (modelStatus) => {
     } finally {
       setIsProcessing(false);
     }
-  }, [cleanup, t, stopPrecogTimer]);
+  }, [cleanup, clearCloudLiveListeners, t, stopPrecogTimer]);
 
   // 处理音频（接收已經是 WAV 格式的 blob）
   const processAudio = useCallback(async (wavBlob, transcribeOptions = {}) => {
@@ -675,6 +802,8 @@ export const useRecording = (modelStatus) => {
     isOptimizing,
     error,
     audioData,
+    partialText,
+    fullText,
     startRecording,
     stopRecording,
     cancelRecording,

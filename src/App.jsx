@@ -677,7 +677,9 @@ export default function App() {
     startRecording: startRecordingNormal,
     stopRecording: stopRecordingNormal,
     cancelRecording: cancelRecordingNormal,
-    error: recordingErrorNormal
+    error: recordingErrorNormal,
+    partialText: cloudLivePartialText,
+    fullText: cloudLiveFullText
   } = useRecording(modelStatus); // 共用 App 的 modelStatus 實例（避免雙重輪詢）
 
   // 串流錄音模式
@@ -1977,13 +1979,13 @@ export default function App() {
           )}
 
           {/* 串流辨識即時文字顯示 */}
-          {streamingMode && isRecording && (partialText || fullText) && (
+          {isRecording && (streamingMode ? (partialText || fullText) : (cloudLivePartialText || cloudLiveFullText)) && (
             <div className="mt-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg max-h-32 overflow-y-auto">
               <p className="text-sm text-blue-800 dark:text-blue-200 whitespace-pre-wrap">
-                {fullText}
-                {partialText && (
+                {streamingMode ? fullText : cloudLiveFullText}
+                {(streamingMode ? partialText : cloudLivePartialText) && (
                   <span className="text-blue-500 dark:text-blue-400 opacity-70">
-                    {partialText}
+                    {streamingMode ? partialText : cloudLivePartialText}
                   </span>
                 )}
               </p>
