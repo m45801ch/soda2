@@ -8,14 +8,22 @@ function isGgufModel(ctx) {
 
 function getCloudAsrSettings(ctx) {
   const saved = ctx.databaseManager?.getSetting("cloud_asr_settings", null);
+  let settings = null;
   if (typeof saved === "string") {
     try {
-      return JSON.parse(saved);
+      settings = JSON.parse(saved);
     } catch (_) {
       return null;
     }
+  } else if (saved && typeof saved === "object") {
+    settings = saved;
   }
-  return saved && typeof saved === "object" ? saved : null;
+  if (!settings) return null;
+  // 各服務商各自記 key（API 金鑰欄已改為 per-provider）；舊版共用欄位當 fallback
+  const perProviderKey = settings.api_keys && typeof settings.api_keys === "object"
+    ? settings.api_keys[settings.provider]
+    : "";
+  return { ...settings, api_key: perProviderKey || settings.api_key || "" };
 }
 
 function isGeminiLiveSettings(settings) {

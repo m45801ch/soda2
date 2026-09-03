@@ -87,6 +87,7 @@ export const DEFAULT_CLOUD_ASR_SETTINGS = {
   enabled: false,
   provider: 'openai',
   api_key: '',
+  api_keys: {},
   base_url: '',
   model: '',
   gemini_mode: 'rest',
@@ -2408,8 +2409,8 @@ const SettingsPage = () => {
                         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">API 金鑰</label>
                         <input
                           type="password"
-                          value={cloudAsrSettings.api_key}
-                          onChange={(e) => updateCloudAsrSetting('api_key', e.target.value)}
+                          value={(cloudAsrSettings.api_keys && cloudAsrSettings.api_keys[cloudAsrSettings.provider]) || ''}
+                          onChange={(e) => updateCloudAsrSetting('api_keys', { ...(cloudAsrSettings.api_keys || {}), [cloudAsrSettings.provider]: e.target.value })}
                           placeholder="sk-..."
                           className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
                         />
@@ -2501,7 +2502,7 @@ const SettingsPage = () => {
                       <div className="flex gap-2 pt-1">
                         <button
                           onClick={testCloudAsrConnection}
-                          disabled={cloudAsrTesting || !cloudAsrSettings.api_key}
+                          disabled={cloudAsrTesting || !((cloudAsrSettings.api_keys && cloudAsrSettings.api_keys[cloudAsrSettings.provider]) || '')}
                           className="flex items-center gap-1.5 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors disabled:opacity-50"
                         >
                           {cloudAsrTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <TestTube className="w-4 h-4" />}
@@ -2510,7 +2511,7 @@ const SettingsPage = () => {
                         {!cloudAsrSettings.enabled ? (
                           <button
                             onClick={() => activateCloudAsr()}
-                            disabled={!cloudAsrSettings.api_key}
+                            disabled={!((cloudAsrSettings.api_keys && cloudAsrSettings.api_keys[cloudAsrSettings.provider]) || '')}
                             className="flex items-center gap-1.5 px-3 py-2 text-sm bg-sky-600 hover:bg-sky-700 disabled:bg-sky-300 text-white rounded-lg transition-colors"
                           >
                             <Wifi className="w-4 h-4" />

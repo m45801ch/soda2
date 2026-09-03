@@ -7,7 +7,8 @@ const fs = require("fs");
 class CloudAsrClient {
   static async transcribe(settings, audioBuffer) {
     const provider = (settings.provider || "groq").toLowerCase();
-    const apiKey = settings.api_key || "";
+    // 各服務商各自記 key；舊版共用欄位當 fallback
+    const apiKey = (settings.api_keys && settings.api_keys[settings.provider]) || settings.api_key || "";
     const model = settings.model || "whisper-large-v3";
     const customBaseUrl = settings.base_url || "";
 
@@ -78,6 +79,55 @@ class CloudAsrClient {
           throw new Error("Failed to parse Deepgram response: no transcript field found.");
         }
         return transcript || "";
+      }
+
+      case "gemini_transcribe": {
+        // Gemini 3.5 Transcribe — 專用語音轉文字模型（REST，錄完再送）
+        const actualModel = (settings.gemini_mode === "live" ? "gemini-3.5-transcribe-live" : "gemini-3.5-transcribe");
+        const modelName = (settings.model || actualModel).trim();
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const base64Audio = audioBuffer.toString("base64");
+
+        // 轉錄模式：smart（智慧）/ verbatim（逐字）
+        const transcribeMode = (settings.transcription_mode || "smart").toUpperCase();
+        const languageCodes = settings.language_code ? [settings.language_code] : [];
+
+        const body = {
+          contents: [{
+            parts: [
+              {
+                inlineData: {
+                  mimeType: "audio/wav",
+                  data: base64Audio
+                }
+              }
+            ]
+          }],
+          generationConfig: {
+            audioTranscriptionConfig: {
+              mode: transcribeMode,
+              languageCodes
+            }
+          }
+        };
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Gemini Transcribe API returned error: ${errText}`);
+        }
+
+        const result = await response.json();
+        // generateContent 回傳 text 或 candidates[0].content.parts[0].text
+        const text = result.text || result.candidates?.[0]?.content?.parts?.[0]?.text;
+        return (text || "").trim();
       }
 
       case "gemini": {
