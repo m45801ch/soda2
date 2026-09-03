@@ -48,11 +48,23 @@ function safeErrorMessage(error, fallback = "Gemini Live operation failed") {
     .replace(/((?:api[_ -]?key|key)\s*[=:]\s*)[^\s,;]+/gi, "$1[redacted]");
 }
 
-function sendCloudLiveText(ctx, channel, value) {
+function sendCloudLiveText(ctx, channel, value, getWindows) {
   if (typeof value !== "string") return;
-  const win = ctx.windowManager?.getMainWindow?.();
-  if (!win || win.isDestroyed?.() || win.webContents?.isDestroyed?.()) return;
-  win.webContents.send(channel, value);
+  let wins = [];
+  try {
+    wins = (typeof getWindows === "function" ? getWindows() : require("electron").BrowserWindow.getAllWindows()) || [];
+  } catch (_) {
+    return;
+  }
+  for (const w of wins) {
+    try {
+      if (!w || w.isDestroyed?.()) continue;
+      if (!w.webContents || w.webContents.isDestroyed?.()) continue;
+      w.webContents.send(channel, value);
+    } catch (_) {
+      // 單一視窗失敗不影響其他視窗
+    }
+  }
 }
 
 module.exports = function register(ctx) {
@@ -586,3 +598,4 @@ module.exports = function register(ctx) {
 
 module.exports.isGeminiLiveSettings = isGeminiLiveSettings;
 module.exports.createGeminiLiveClient = createGeminiLiveClient;
+module.exports.sendCloudLiveText = sendCloudLiveText;
