@@ -85,7 +85,11 @@ class GeminiTranscribeLiveClient {
           this.connected = false;
           this.setupSent = false;
           this.setupComplete = false;
-          if (!settled) finish(reject, new Error("Gemini Live socket closed before setup acknowledgement"));
+          if (!settled) {
+            const reasonText = reason?.toString?.() || "";
+            const detail = reasonText ? ` (code ${code}: ${reasonText})` : ` (code ${code})`;
+            finish(reject, new Error("Gemini Live socket closed before setup acknowledgement" + detail));
+          }
           this._resolvePendingEndStream();
           this.onClose?.(code, reason?.toString?.() || "");
         });
