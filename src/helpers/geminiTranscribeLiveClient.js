@@ -2,8 +2,9 @@ const CONNECT_TIMEOUT_MS = 10_000;
 const END_STREAM_TIMEOUT_MS = 15_000;
 
 class GeminiTranscribeLiveClient {
-  constructor({ apiKey, languageCode, transcriptionMode, customVocabulary, logger, WebSocketImpl }) {
+  constructor({ apiKey, languageCode, transcriptionMode, customVocabulary, logger, WebSocketImpl, model }) {
     this.apiKey = apiKey;
+    this.model = (model || "").trim();
     this.languageCode = languageCode || "";
     this.transcriptionMode = transcriptionMode || "smart";
     this.customVocabulary = customVocabulary || [];
@@ -111,7 +112,7 @@ class GeminiTranscribeLiveClient {
     if (this.customVocabulary.length) inputAudioTranscription.customVocabulary = this.customVocabulary;
     this.ws.send(JSON.stringify({
       setup: {
-        model: "models/gemini-3.5-transcribe-live",
+        model: this.model ? (this.model.startsWith("models/") ? this.model : "models/" + this.model) : "models/gemini-3.5-transcribe-live",
         generationConfig: { responseModalities: ["TEXT"] },
         inputAudioTranscription,
       },

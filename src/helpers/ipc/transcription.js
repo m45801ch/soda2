@@ -34,6 +34,7 @@ function createGeminiLiveClient(ctx, settings) {
   const GeminiTranscribeLiveClient = require("../geminiTranscribeLiveClient");
   return new GeminiTranscribeLiveClient({
     apiKey: settings.api_key,
+    model: settings.model || "",
     languageCode: settings.language_code || "",
     transcriptionMode: settings.transcription_mode || "smart",
     customVocabulary: settings.custom_vocabulary || [],

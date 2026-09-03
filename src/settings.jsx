@@ -2437,7 +2437,6 @@ const SettingsPage = () => {
                           type="text"
                           value={cloudAsrSettings.model}
                           onChange={(e) => updateCloudAsrSetting('model', e.target.value)}
-                          readOnly={cloudAsrSettings.provider === 'gemini_transcribe' && cloudAsrSettings.gemini_mode === 'live'}
                           placeholder={cloudAsrSettings.provider === 'openai' ? 'whisper-1' : cloudAsrSettings.provider === 'groq' ? 'whisper-large-v3-turbo' : cloudAsrSettings.provider === 'gemini_transcribe' ? 'gemini-3.5-transcribe' : ''}
                           className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
                         />
