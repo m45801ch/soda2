@@ -19,6 +19,7 @@ class GeminiTranscribeLiveClient {
     this.onClose = null;
     this._finalTexts = [];
     this._connectPromise = null;
+    this._cancelConnect = null;
     this._endStreamPromise = null;
     this._resolveEndStream = null;
     this._endStreamTimeout = null;
@@ -39,8 +40,10 @@ class GeminiTranscribeLiveClient {
         settled = true;
         clearTimeout(timeout);
         this._connectPromise = null;
+        this._cancelConnect = null;
         callback(value);
       };
+      this._cancelConnect = () => finish(reject, new Error("Gemini Live connection disconnected"));
 
       try {
         const url = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=" + encodeURIComponent(this.apiKey);
@@ -163,6 +166,7 @@ class GeminiTranscribeLiveClient {
 
   disconnect() {
     const socket = this.ws;
+    this._cancelConnect?.();
     this.ws = null;
     this.connected = false;
     this.setupSent = false;

@@ -249,3 +249,36 @@ test("stale socket events cannot change readiness after reconnect", async () => 
   oldSocket.close();
   assert.equal(client.isConnected(), true);
 });
+
+test("disconnect cancels setup wait and permits an immediate replacement connection", async () => {
+  const firstSocket = new FakeSocket();
+  const replacementSocket = new FakeSocket();
+  const sockets = [firstSocket, replacementSocket];
+  const client = new GeminiTranscribeLiveClient({
+    apiKey: "test",
+    WebSocketImpl: () => sockets.shift(),
+  });
+  const setTimeoutOriginal = global.setTimeout;
+  global.setTimeout = (callback, delay, ...args) => {
+    if (delay === 10_000) return { callback, args };
+    return setTimeoutOriginal(callback, delay, ...args);
+  };
+
+  try {
+    const connecting = client.connect();
+    connecting.catch(() => {});
+    firstSocket.open();
+    client.disconnect();
+
+    assert.equal(await settles(connecting), true);
+    await assert.rejects(connecting, /disconnected/i);
+
+    const reconnecting = client.connect();
+    replacementSocket.open();
+    replacementSocket.message({ setupComplete: {} });
+    await reconnecting;
+    assert.equal(client.isConnected(), true);
+  } finally {
+    global.setTimeout = setTimeoutOriginal;
+  }
+});
