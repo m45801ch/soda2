@@ -150,6 +150,7 @@ class GeminiTranscribeLiveClient {
   _handleServerContent(content) {
     if (!content) return;
     this.logger?.info?.(`[GeminiLive] serverContent keys: ${Object.keys(content).join(",")}`);
+    this.logger?.info?.(`[GeminiLive] serverContent body: ${JSON.stringify(content).slice(0, 300)}`);
     const interim = content.interimInputTranscription?.text;
     if (interim) this.onInterimText?.(interim);
     const final = content.inputTranscription?.text;
@@ -158,6 +159,8 @@ class GeminiTranscribeLiveClient {
       this.onFinalText?.(final);
     }
     if (content.turnComplete) this._resolvePendingEndStream();
+    // transcribe 流程 server 用 generationComplete 結束一輪（不會送 turnComplete）
+    if (content.generationComplete) this._resolvePendingEndStream();
   }
 
   _resolvePendingEndStream() {
