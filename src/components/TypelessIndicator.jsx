@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "../i18n";
-import { indicatorClass } from "./typelessIndicatorLogic.js";
+import { indicatorClass, truncateLiveText } from "./typelessIndicatorLogic.js";
 
 /**
  * TypeLess 錄音指示器組件（講話時跳出來的「藥丸」）
@@ -12,6 +12,7 @@ const TypelessIndicator = () => {
   const [commandMode, setCommandMode] = useState(false);
   const [cloudAsrActive, setCloudAsrActive] = useState(false);
   const [aiOptimizeRecording, setAiOptimizeRecording] = useState(false);
+  const [liveText, setLiveText] = useState('');
 
   useEffect(() => {
     let unsubStart = null;
@@ -34,6 +35,24 @@ const TypelessIndicator = () => {
       .catch(() => {});
     unsub = window.electronAPI?.onCommandModeChanged?.((v) => setCommandMode(!!v));
     return () => { if (typeof unsub === "function") unsub(); };
+  }, []);
+
+  // 雲端 Live 即時文字 — 顯示最新一小段；開始/停止/取消錄音時清空
+  useEffect(() => {
+    const unsubs = [];
+    const api = window.electronAPI;
+    if (!api) return undefined;
+    const reset = () => setLiveText('');
+    if (typeof api.onTypelessStartRecording === 'function') unsubs.push(api.onTypelessStartRecording(reset));
+    if (typeof api.onTypelessStopRecording === 'function') unsubs.push(api.onTypelessStopRecording(reset));
+    if (typeof api.onTypelessCancelRecording === 'function') unsubs.push(api.onTypelessCancelRecording(reset));
+    if (typeof api.onCloudLiveInterim === 'function') {
+      unsubs.push(api.onCloudLiveInterim((text) => setLiveText(truncateLiveText(text || ''))));
+    }
+    if (typeof api.onCloudLiveFinal === 'function') {
+      unsubs.push(api.onCloudLiveFinal((segment) => setLiveText((prev) => truncateLiveText((prev || '') + (segment || '')))));
+    }
+    return () => { for (const u of unsubs) { if (typeof u === 'function') u(); } };
   }, []);
 
   // 雲端 ASR 狀態 — 從 cloud_asr_settings 判斷
@@ -89,6 +108,12 @@ const TypelessIndicator = () => {
             ? t("panel.aiOptimizeRecording")
             : commandMode ? t("panel.commandListening") : t("panel.recordingIndicator")}
         </span>
+        {/* 雲端 Live 即時文字 */}
+        {liveText ? (
+          <span className="text-white/90 font-normal text-[12px] whitespace-nowrap tracking-wide max-w-[220px] overflow-hidden text-ellipsis">
+            {liveText}
+          </span>
+        ) : null}
 
         {/* 聲波動畫 */}
         <div className="flex items-center gap-0.5">
