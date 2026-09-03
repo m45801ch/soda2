@@ -70,6 +70,39 @@ test("connect waits for setupComplete before resolving", async () => {
   await connecting;
 });
 
+test("setup serializes default SMART transcription mode", async () => {
+  const socket = new FakeSocket();
+  const client = createClient(socket);
+  const connecting = client.connect();
+
+  socket.open();
+  const setup = JSON.parse(socket.sent[0]).setup.inputAudioTranscription;
+  socket.message({ setupComplete: {} });
+  await connecting;
+  assert.equal(setup.mode, "SMART");
+});
+
+test("setup serializes VERBATIM mode and custom vocabulary", async () => {
+  const socket = new FakeSocket();
+  const client = new GeminiTranscribeLiveClient({
+    apiKey: "test",
+    transcriptionMode: "verbatim",
+    customVocabulary: ["Codex", "Gemini Live"],
+    WebSocketImpl: () => socket,
+  });
+  const connecting = client.connect();
+
+  socket.open();
+  const setup = JSON.parse(socket.sent[0]).setup.inputAudioTranscription;
+  socket.message({ setupComplete: {} });
+  await connecting;
+  assert.deepEqual(setup, {
+    languageCodes: [],
+    mode: "VERBATIM",
+    customVocabulary: ["Codex", "Gemini Live"],
+  });
+});
+
 test("connect rejects when the server reports a setup error", async () => {
   const socket = new FakeSocket();
   const client = createClient(socket);
@@ -141,6 +174,41 @@ test("endStream sends audioStreamEnd once and resolves at turnComplete", async (
   assert.equal(socket.sent.filter((payload) => JSON.parse(payload).realtimeInput?.audioStreamEnd).length, 1);
 });
 
+test("endStream stays idempotent after turnComplete", async () => {
+  const socket = new FakeSocket();
+  const client = await connect(socket);
+  socket.message({ serverContent: { inputTranscription: { text: "final text" } } });
+
+  const ending = client.endStream();
+  socket.message({ serverContent: { turnComplete: true } });
+  await ending;
+
+  assert.equal(await client.endStream(), "final text");
+  assert.equal(socket.sent.filter((payload) => JSON.parse(payload).realtimeInput?.audioStreamEnd).length, 1);
+});
+
+test("endStream stays idempotent after its timeout", async () => {
+  const socket = new FakeSocket();
+  const client = await connect(socket);
+  socket.message({ serverContent: { inputTranscription: { text: "timed final" } } });
+  const setTimeoutOriginal = global.setTimeout;
+  global.setTimeout = (callback, delay, ...args) => {
+    if (delay === 15_000) {
+      queueMicrotask(() => callback(...args));
+      return 0;
+    }
+    return setTimeoutOriginal(callback, delay, ...args);
+  };
+
+  try {
+    assert.equal(await client.endStream(), "timed final");
+    assert.equal(await client.endStream(), "timed final");
+    assert.equal(socket.sent.filter((payload) => JSON.parse(payload).realtimeInput?.audioStreamEnd).length, 1);
+  } finally {
+    global.setTimeout = setTimeoutOriginal;
+  }
+});
+
 test("reports socket errors and permits repeated disconnect", async () => {
   const socket = new FakeSocket();
   const client = await connect(socket);
@@ -153,4 +221,31 @@ test("reports socket errors and permits repeated disconnect", async () => {
   client.disconnect();
   assert.equal(socket.closed, true);
   assert.equal(client.isConnected(), false);
+});
+
+test("stale socket events cannot change readiness after reconnect", async () => {
+  const oldSocket = new FakeSocket();
+  const currentSocket = new FakeSocket();
+  const sockets = [oldSocket, currentSocket];
+  const client = new GeminiTranscribeLiveClient({
+    apiKey: "test",
+    WebSocketImpl: () => sockets.shift(),
+  });
+
+  await connect(oldSocket, client);
+  client.disconnect();
+
+  const reconnecting = client.connect();
+  currentSocket.open();
+  oldSocket.message({ setupComplete: {} });
+  oldSocket.error(new Error("stale error"));
+  oldSocket.close();
+
+  assert.equal(await settles(reconnecting), false);
+  assert.equal(client.isConnected(), false);
+  currentSocket.message({ setupComplete: {} });
+  await reconnecting;
+
+  oldSocket.close();
+  assert.equal(client.isConnected(), true);
 });

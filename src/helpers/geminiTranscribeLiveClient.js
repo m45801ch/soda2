@@ -22,6 +22,7 @@ class GeminiTranscribeLiveClient {
     this._endStreamPromise = null;
     this._resolveEndStream = null;
     this._endStreamTimeout = null;
+    this._endStreamSent = false;
   }
 
   connect() {
@@ -44,12 +45,15 @@ class GeminiTranscribeLiveClient {
       try {
         const url = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=" + encodeURIComponent(this.apiKey);
         const WebSocketConstructor = this.WebSocketImpl || require("ws");
-        this.ws = this.WebSocketImpl ? WebSocketConstructor(url) : new WebSocketConstructor(url);
-        this.ws.on("open", () => {
+        const socket = this.WebSocketImpl ? WebSocketConstructor(url) : new WebSocketConstructor(url);
+        this.ws = socket;
+        socket.on("open", () => {
+          if (this.ws !== socket) return;
           this.connected = true;
           this._sendSetup();
         });
-        this.ws.on("message", (data) => {
+        socket.on("message", (data) => {
+          if (this.ws !== socket) return;
           let message;
           try {
             message = JSON.parse(data.toString());
@@ -68,11 +72,13 @@ class GeminiTranscribeLiveClient {
             this._handleServerContent(message.serverContent);
           }
         });
-        this.ws.on("error", (error) => {
+        socket.on("error", (error) => {
+          if (this.ws !== socket) return;
           this._reportError(error);
           if (!this.setupComplete) finish(reject, error);
         });
-        this.ws.on("close", (code, reason) => {
+        socket.on("close", (code, reason) => {
+          if (this.ws !== socket) return;
           this.connected = false;
           this.setupSent = false;
           this.setupComplete = false;
@@ -89,7 +95,10 @@ class GeminiTranscribeLiveClient {
 
   _sendSetup() {
     if (this.setupSent) return;
-    const inputAudioTranscription = { languageCodes: this.languageCode ? [this.languageCode] : [] };
+    const inputAudioTranscription = {
+      languageCodes: this.languageCode ? [this.languageCode] : [],
+      mode: String(this.transcriptionMode).toUpperCase() === "VERBATIM" ? "VERBATIM" : "SMART",
+    };
     if (this.customVocabulary.length) inputAudioTranscription.customVocabulary = this.customVocabulary;
     this.ws.send(JSON.stringify({
       setup: {
@@ -100,6 +109,7 @@ class GeminiTranscribeLiveClient {
     }));
     this.setupSent = true;
     this._finalTexts = [];
+    this._endStreamSent = false;
   }
 
   sendAudioChunk(audioBase64) {
@@ -109,8 +119,10 @@ class GeminiTranscribeLiveClient {
 
   endStream() {
     if (this._endStreamPromise) return this._endStreamPromise;
+    if (this._endStreamSent) return Promise.resolve(this.getFinalText());
     if (!this.connected || !this.setupComplete) return Promise.resolve(this.getFinalText());
     this._endStreamPromise = new Promise((resolve) => {
+      this._endStreamSent = true;
       this._resolveEndStream = () => resolve(this.getFinalText());
       this._endStreamTimeout = setTimeout(() => this._resolvePendingEndStream(), END_STREAM_TIMEOUT_MS);
       this.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
