@@ -44,7 +44,26 @@ contextBridge.exposeInMainWorld("electronAPI", {
   transcribeAudio: (audioData, options) => ipcRenderer.invoke("transcribe-audio", audioData, options),
   checkSherpaStatus: () => ipcRenderer.invoke("check-sherpa-status"),
   restartSherpaServer: () => ipcRenderer.invoke("restart-sherpa-server"),
-  testCloudAsrConnection: (settings) => ipcRenderer.invoke("test-cloud-asr-connection", settings),
+  testCloudAsrConnection: () => ipcRenderer.invoke("test-cloud-asr-connection"),
+  cloudLiveStart: () => ipcRenderer.invoke("cloud-live-start"),
+  cloudLiveFeed: (audioBase64) => ipcRenderer.invoke("cloud-live-feed", audioBase64),
+  cloudLiveEnd: () => ipcRenderer.invoke("cloud-live-end"),
+  cloudLiveAbort: () => ipcRenderer.invoke("cloud-live-abort"),
+  onCloudLiveInterim: (callback) => {
+    const handler = (_event, text) => callback(text);
+    ipcRenderer.on("cloud-live-interim", handler);
+    return () => ipcRenderer.removeListener("cloud-live-interim", handler);
+  },
+  onCloudLiveFinal: (callback) => {
+    const handler = (_event, text) => callback(text);
+    ipcRenderer.on("cloud-live-final", handler);
+    return () => ipcRenderer.removeListener("cloud-live-final", handler);
+  },
+  onCloudLiveError: (callback) => {
+    const handler = (_event, message) => callback(message);
+    ipcRenderer.on("cloud-live-error", handler);
+    return () => ipcRenderer.removeListener("cloud-live-error", handler);
+  },
 
   // 邊錄邊算（precog）：錄音中先解碼已講完的段落，停止時只剩尾段
   precogStart: (profile) => ipcRenderer.invoke("precog-start", profile),

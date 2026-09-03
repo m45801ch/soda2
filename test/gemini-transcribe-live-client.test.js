@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const Module = require("node:module");
 
 const GeminiTranscribeLiveClient = require("../src/helpers/geminiTranscribeLiveClient");
 
@@ -280,5 +281,105 @@ test("disconnect cancels setup wait and permits an immediate replacement connect
     assert.equal(client.isConnected(), true);
   } finally {
     global.setTimeout = setTimeoutOriginal;
+  }
+});
+
+test("Live connection test uses handshake rather than REST transcription", async () => {
+  const handlers = new Map();
+  let restTranscribeCalls = 0;
+  const liveClients = [];
+  const originalLoad = Module._load;
+
+  class FakeLiveClient {
+    constructor(options) {
+      this.options = options;
+      liveClients.push(this);
+    }
+
+    async connect() {}
+    disconnect() { this.disconnected = true; }
+  }
+
+  Module._load = function loadForIpcTest(request, parent, isMain) {
+    if (request === "electron") {
+      return { ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) } };
+    }
+    if (request === "../cloudAsrClient") {
+      return { transcribe: async () => { restTranscribeCalls += 1; return ""; } };
+    }
+    if (request === "../geminiTranscribeLiveClient") return FakeLiveClient;
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  const ipcPath = require.resolve("../src/helpers/ipc/transcription");
+  delete require.cache[ipcPath];
+  try {
+    const register = require(ipcPath);
+    register({
+      databaseManager: {
+        getSetting: (key) => key === "cloud_asr_settings"
+          ? JSON.stringify({ provider: "gemini_transcribe", gemini_mode: "live", api_key: "stored-key" })
+          : null,
+      },
+      logger: { error() {} },
+    });
+
+    const result = await handlers.get("test-cloud-asr-connection")({}, {
+      provider: "gemini_transcribe",
+      gemini_mode: "live",
+      api_key: "renderer-must-not-control-this",
+    });
+
+    assert.deepEqual(result, { success: true });
+    assert.equal(restTranscribeCalls, 0);
+    assert.equal(liveClients.length, 1);
+    assert.equal(liveClients[0].options.apiKey, "stored-key");
+    assert.equal(liveClients[0].disconnected, true);
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[ipcPath];
+  }
+});
+
+test("preload Live listeners return matching cleanup functions", () => {
+  const listeners = new Map();
+  const exposedApis = new Map();
+  const originalLoad = Module._load;
+  Module._load = function loadPreloadForTest(request, parent, isMain) {
+    if (request === "electron") {
+      return {
+        contextBridge: { exposeInMainWorld: (name, api) => exposedApis.set(name, api) },
+        ipcRenderer: {
+          invoke() {},
+          on: (channel, handler) => listeners.set(channel, handler),
+          removeListener: (channel, handler) => {
+            assert.equal(listeners.get(channel), handler);
+            listeners.delete(channel);
+          },
+        },
+      };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  const preloadPath = require.resolve("../preload");
+  delete require.cache[preloadPath];
+  try {
+    require(preloadPath);
+    const exposedApi = exposedApis.get("electronAPI");
+    assert.equal(typeof exposedApi.cloudLiveStart, "function");
+    assert.equal(typeof exposedApi.cloudLiveFeed, "function");
+    assert.equal(typeof exposedApi.cloudLiveEnd, "function");
+    assert.equal(typeof exposedApi.cloudLiveAbort, "function");
+
+    const received = [];
+    const unsubscribe = exposedApi.onCloudLiveInterim((text) => received.push(text));
+    listeners.get("cloud-live-interim")({}, "partial");
+    assert.deepEqual(received, ["partial"]);
+    unsubscribe();
+    assert.equal(listeners.has("cloud-live-interim"), false);
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[preloadPath];
   }
 });

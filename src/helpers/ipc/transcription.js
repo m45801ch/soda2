@@ -6,6 +6,47 @@ function isGgufModel(ctx) {
   return (ctx.databaseManager ? ctx.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer") === "qwen3_asr_gguf";
 }
 
+function getCloudAsrSettings(ctx) {
+  const saved = ctx.databaseManager?.getSetting("cloud_asr_settings", null);
+  if (typeof saved === "string") {
+    try {
+      return JSON.parse(saved);
+    } catch (_) {
+      return null;
+    }
+  }
+  return saved && typeof saved === "object" ? saved : null;
+}
+
+function isGeminiLiveSettings(settings) {
+  return settings?.provider === "gemini_transcribe" && settings?.gemini_mode === "live";
+}
+
+function createGeminiLiveClient(ctx, settings) {
+  const GeminiTranscribeLiveClient = require("../geminiTranscribeLiveClient");
+  return new GeminiTranscribeLiveClient({
+    apiKey: settings.api_key,
+    languageCode: settings.language_code || "",
+    transcriptionMode: settings.transcription_mode || "smart",
+    customVocabulary: settings.custom_vocabulary || [],
+    logger: ctx.logger,
+  });
+}
+
+function safeErrorMessage(error, fallback = "Gemini Live operation failed") {
+  const message = typeof error?.message === "string" ? error.message : fallback;
+  return message
+    .replace(/AIza[\w-]+/g, "[redacted]")
+    .replace(/((?:api[_ -]?key|key)\s*[=:]\s*)[^\s,;]+/gi, "$1[redacted]");
+}
+
+function sendCloudLiveText(ctx, channel, value) {
+  if (typeof value !== "string") return;
+  const win = ctx.windowManager?.getMainWindow?.();
+  if (!win || win.isDestroyed?.() || win.webContents?.isDestroyed?.()) return;
+  win.webContents.send(channel, value);
+}
+
 module.exports = function register(ctx) {
   // 打開「記下來」的筆記檔（用系統預設程式）
   ipcMain.handle("open-notes", async () => {
@@ -150,8 +191,19 @@ module.exports = function register(ctx) {
   });
 
   // 測試雲端 ASR 連線
-  ipcMain.handle("test-cloud-asr-connection", async (event, cloudAsrSettings) => {
+  ipcMain.handle("test-cloud-asr-connection", async () => {
     try {
+      const cloudAsrSettings = getCloudAsrSettings(ctx);
+      if (!cloudAsrSettings) return { success: false, error: "Cloud ASR settings are not configured" };
+      if (isGeminiLiveSettings(cloudAsrSettings)) {
+        const client = createGeminiLiveClient(ctx, cloudAsrSettings);
+        try {
+          await client.connect();
+          return { success: true };
+        } finally {
+          client.disconnect();
+        }
+      }
       const CloudAsrClient = require("../cloudAsrClient");
       const sampleRate = 16000;
       const numChannels = 1;
@@ -181,7 +233,7 @@ module.exports = function register(ctx) {
       const resultText = await CloudAsrClient.transcribe(cloudAsrSettings, audioBuffer);
       return { success: true, text: resultText };
     } catch (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: safeErrorMessage(error, "Cloud ASR connection test failed") };
     }
   });
 
@@ -449,4 +501,80 @@ module.exports = function register(ctx) {
     }
     return await ctx.sherpaManager.restartServer();
   });
+
+  // ===== Gemini Live Transcribe 串流 =====
+  ipcMain.handle("cloud-live-start", async () => {
+    try {
+      const settings = getCloudAsrSettings(ctx);
+      if (!isGeminiLiveSettings(settings)) {
+        return { success: false, error: "Gemini Live is not configured" };
+      }
+      // 清理舊連線
+      if (ctx.geminiLiveClient) {
+        ctx.geminiLiveClient.disconnect();
+      }
+      ctx.geminiLiveClient = createGeminiLiveClient(ctx, settings);
+
+      // 設定回呼 — 把 interim/final 文字送到 renderer
+      ctx.geminiLiveClient.onInterimText = (text) => {
+        sendCloudLiveText(ctx, "cloud-live-interim", text);
+      };
+      ctx.geminiLiveClient.onFinalText = (text) => {
+        sendCloudLiveText(ctx, "cloud-live-final", text);
+      };
+      ctx.geminiLiveClient.onError = (err) => {
+        const message = safeErrorMessage(err);
+        ctx.logger?.error?.("[CloudLive] Error:", message);
+        sendCloudLiveText(ctx, "cloud-live-error", message);
+      };
+
+      await ctx.geminiLiveClient.connect();
+      return { success: true };
+    } catch (error) {
+      const message = safeErrorMessage(error);
+      ctx.logger?.error?.("[CloudLive] Start failed:", message);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle("cloud-live-feed", async (_event, audioBase64) => {
+    try {
+      if (!ctx.geminiLiveClient || !ctx.geminiLiveClient.isConnected()) {
+        return { success: false, error: "GeminiLive not connected" };
+      }
+      ctx.geminiLiveClient.sendAudioChunk(audioBase64);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: safeErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle("cloud-live-end", async () => {
+    try {
+      if (!ctx.geminiLiveClient) {
+        return { success: true, text: "" };
+      }
+      const finalText = await ctx.geminiLiveClient.endStream();
+      ctx.geminiLiveClient.disconnect();
+      ctx.geminiLiveClient = null;
+      return { success: true, text: finalText };
+    } catch (error) {
+      return { success: false, error: safeErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle("cloud-live-abort", async () => {
+    try {
+      if (ctx.geminiLiveClient) {
+        ctx.geminiLiveClient.disconnect();
+        ctx.geminiLiveClient = null;
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: safeErrorMessage(error) };
+    }
+  });
 };
+
+module.exports.isGeminiLiveSettings = isGeminiLiveSettings;
+module.exports.createGeminiLiveClient = createGeminiLiveClient;
