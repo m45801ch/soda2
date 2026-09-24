@@ -128,7 +128,43 @@ class SherpaManager {
       this.logger.warn && this.logger.warn(resolved.warning);
     }
     this.logger.info && this.logger.info("Sherpa 加速模式", { acceleration, provider: env.SHERPA_PROVIDER });
+    // Windows + CUDA：把 pip nvidia CUDA 套件的 bin 目錄加入 PATH，
+    // 否則 onnxruntime CUDA EP 找不到 cudart/cublas/cuDNN 而退回 CPU。
+    if (process.platform === "win32" && env.SHERPA_PROVIDER === "cuda") {
+      this._prependNvidiaCudaBins(env);
+    }
     return env;
+  }
+
+  /**
+   * 查詢所用 python 的 site-packages，把 nvidia 各套件下的 bin 目錄加入 env.PATH。
+   * 失敗時靜默略過（不阻擋 backend 啟動，最多就是 CUDA 不可用）。
+   */
+  _prependNvidiaCudaBins(env) {
+    try {
+      const pythonCmd = this.pythonResolver?.pythonCmd || "python";
+      const out = execSync(
+        `"${pythonCmd}" -c "import site;print(site.getusersitepackages());[print(p) for p in site.getsitepackages()]"`,
+        { encoding: "utf8", windowsHide: true, timeout: 30000 }
+      );
+      const bins = [];
+      for (const line of out.split(/\r?\n/)) {
+        const siteDir = line.trim();
+        if (!siteDir) continue;
+        const nvidiaDir = path.join(siteDir, "nvidia");
+        if (!fs.existsSync(nvidiaDir)) continue;
+        for (const pkg of fs.readdirSync(nvidiaDir)) {
+          const bin = path.join(nvidiaDir, pkg, "bin");
+          if (fs.existsSync(bin)) bins.push(bin);
+        }
+      }
+      if (bins.length > 0) {
+        env.PATH = [...bins, env.PATH || process.env.PATH].join(path.delimiter);
+        this.logger.info && this.logger.info("已加入 NVIDIA CUDA DLL 路徑", { bins });
+      }
+    } catch (e) {
+      this.logger.warn && this.logger.warn("加入 NVIDIA CUDA DLL 路徑失敗（將沿用原 PATH）", e?.message || e);
+    }
   }
   findPythonExecutable() { return this.pythonResolver.findPythonExecutable(); }
 

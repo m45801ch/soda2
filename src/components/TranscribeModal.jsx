@@ -112,7 +112,7 @@ export default function TranscribeModal({ onClose }) {
     }
   }, []);
 
-  const onPick = (e) => { const f = e.target.files?.[0]; if (f) run(f); };
+  const onPick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) run(f); };
   const onDrop = (e) => {
     e.preventDefault();
     const f = e.dataTransfer.files?.[0];
@@ -184,7 +184,6 @@ export default function TranscribeModal({ onClose }) {
                 <div className="text-xs text-gray-400 mt-1">{t("transcribe.failedHint")}</div>
               </div>
             )}
-            <input ref={fileInputRef} type="file" accept="video/*,audio/*,.mp4,.mov,.mkv,.webm,.mp3,.wav,.m4a,.ogg,.flac" className="hidden" onChange={onPick} />
           </div>
           </>
         ) : (
@@ -198,6 +197,8 @@ export default function TranscribeModal({ onClose }) {
             </div>
           </div>
         )}
+        {/* 選檔 input 必須常駐（不能只在 idle 分支裡），否則 done 狀態下「換一個檔」按鈕拿到的 ref 是 null */}
+        <input ref={fileInputRef} type="file" accept="video/*,audio/*,.mp4,.mov,.mkv,.webm,.mp3,.wav,.m4a,.ogg,.flac" className="hidden" onChange={onPick} />
 
         {/* 逐字稿結果 */}
         <textarea

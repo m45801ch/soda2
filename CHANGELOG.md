@@ -7,6 +7,18 @@
 
 - （暫無）
 
+## [1.2.5] - 2026-09-24
+
+### 新增
+
+- sherpa CUDA GPU 加速正式可用：Breeze-ASR-25 走 GPU 辨識，60 秒音訊約 35 秒完成（RTF 約 0.6，原 CPU 約 1.7–3.0）
+
+### 修正
+
+- 修復 sherpa `provider=cuda` 載入失敗被迫退回 CPU：backend 程序的 PATH 缺少 pip nvidia CUDA DLL（cudart/cublas/cuDNN），現啟動時自動加入（需安裝 CUDA 版 sherpa-onnx，如 `1.13.7+cuda12.cudnn9`）
+- 修復 backend 啟動超時按模型大小縮放：1.7GB Breeze-ASR-25 不再載入中途被砍掉
+- 修復影音轉文字「換一個檔」按鈕在辨識完成後無作用：隱藏選檔 input 被卸載導致 ref 為空，改為常駐；重選同一檔案也會觸發（選完即清空 input 值）
+
 ## [1.2.4] - 2026-09-03
 
 ### 新增

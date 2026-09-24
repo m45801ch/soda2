@@ -16,6 +16,22 @@ import tempfile
 import wave
 import numpy as np
 
+# Windows：把 pip nvidia CUDA 套件的 DLL 目錄加入 DLL 搜尋路徑，
+# 讓 onnxruntime CUDA EP 找得到 cudart/cublas/cufft/cuDNN（pip 版不在 PATH 上）。
+# 必須在 import sherpa_onnx / 建立 recognizer 之前執行。
+if os.name == "nt":
+    try:
+        import glob as _glob
+        for _sp in sys.path:
+            for _d in _glob.glob(os.path.join(_sp, "nvidia", "*", "bin")):
+                if os.path.isdir(_d):
+                    try:
+                        os.add_dll_directory(_d)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
 # 文字後處理層（簡轉繁/清理/標點規則/列點），抽至 text_processing.py
 from text_processing import (
     to_traditional,

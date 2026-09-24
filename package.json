@@ -1,6 +1,6 @@
 {
   "name": "soda2",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "說打兔 soda2 - 最快的本地語音與線上輸入（sherpa-onnx）",
   "main": "main.js",
   "private": true,
