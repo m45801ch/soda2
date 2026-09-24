@@ -972,6 +972,14 @@ class SherpaManager {
     return this.initializationPromise;
   }
 
+  // 依模型大小計算後端啟動超時：小模型約 1 分鐘，大模型（Breeze 1.7GB）約 4 分鐘。
+  // 固定 30 秒會在載入大模型到一半時 kill 掉後端，導致轉錄無輸出。
+  getStartupTimeoutMs(modelType = null) {
+    const config = this.getModelConfig(modelType) || {};
+    const expectedMB = (config.expected_size || 0) / (1024 * 1024);
+    return Math.max(60_000, Math.ceil(60_000 + expectedMB * 100));
+  }
+
   async _startSherpaServer() {
     try {
       // GGUF 模型由 llamaManager 負責，sherpa_server.py 不支援 --model-type qwen3_asr_gguf
@@ -1121,7 +1129,9 @@ class SherpaManager {
           }
         });
 
-        // Sherpa-ONNX 載入更快，30 秒超時應該足夠
+        const startupTimeoutMs = this.getStartupTimeoutMs(modelType);
+        this.logger.info &&
+          this.logger.info(`Sherpa 服務器啟動超時設定: ${Math.round(startupTimeoutMs / 1000)}s（模型 ${modelType}）`);
         setTimeout(() => {
           if (!initResponseReceived) {
             this.logger.warn &&
@@ -1131,7 +1141,7 @@ class SherpaManager {
             }
             resolve();
           }
-        }, 30000);
+        }, startupTimeoutMs);
       });
     } catch (error) {
       this.logger.error && this.logger.error("啟動 Sherpa 服務器異常", error);
